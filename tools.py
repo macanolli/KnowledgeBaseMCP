@@ -17,6 +17,9 @@ async def search_notes(query: str, db_path: str, limit: int = 10) -> str:
     Args:
         query: Search terms (searches title, content, tags, and filename)
         limit: Maximum number of results to return (default: 10)
+        :param limit:
+        :param query:
+        :param db_path:
     """
     results = search_notes_db(query, db_path, limit)
 
