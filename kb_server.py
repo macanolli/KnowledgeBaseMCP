@@ -61,6 +61,52 @@ async def get_kb_stats() -> str:
     return await tools.get_kb_stats(KB_DIR, DB_PATH)
 
 
+@mcp.tool
+async def create_note(title: str, content: str, tags: str = "", ctx: Context = None) -> str:
+    """
+    Create a new note in the knowledge base.
+    
+    Args:
+        title: Title of the note (will be used as filename and H1 heading)
+        content: Content of the note (markdown supported)
+        tags: Optional comma-separated tags
+    
+    Returns:
+        Confirmation message with filepath
+    """
+    return await tools.create_note(title, content, KB_DIR, DB_PATH, tags, ctx)
+
+
+@mcp.tool
+async def update_note(filepath: str, content: str, ctx: Context = None) -> str:
+    """
+    Update an existing note's content (replaces entire content).
+    
+    Args:
+        filepath: Full path to the note file
+        content: New content for the note (will completely replace existing content)
+    
+    Returns:
+        Confirmation message
+    """
+    return await tools.update_note(filepath, content, DB_PATH, ctx)
+
+
+@mcp.tool
+async def append_to_note(filepath: str, content: str, ctx: Context = None) -> str:
+    """
+    Append content to an existing note (adds to the end).
+    
+    Args:
+        filepath: Full path to the note file
+        content: Content to append to the note
+    
+    Returns:
+        Confirmation message
+    """
+    return await tools.append_to_note(filepath, content, DB_PATH, ctx)
+
+
 # Initialize on startup
 init_db(DB_PATH)
 if Path(KB_DIR).exists():

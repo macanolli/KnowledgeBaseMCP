@@ -7,7 +7,17 @@ Defines all available tools/functions that can be called via MCP.
 from pathlib import Path
 from fastmcp import Context
 
-from database import search_notes_db, get_recent_notes, get_kb_statistics, index_directory
+from database import (
+    search_notes_db,
+    get_recent_notes,
+    get_kb_statistics,
+    index_directory,
+    create_note_file,
+    update_note_file,
+    append_to_note_file,
+    index_file,
+    upsert_note_to_db
+)
 
 
 async def search_notes(query: str, db_path: str, limit: int = 10) -> str:
@@ -89,3 +99,97 @@ async def get_kb_stats(kb_dir: str, db_path: str) -> str:
 - Total content: {stats['total_chars']:,} characters
 - Directory: {kb_dir}
 - Last indexed: {stats['last_indexed'] or 'Never'}"""
+
+
+async def create_note(title: str, content: str, kb_dir: str, db_path: str, tags: str = "", ctx: Context = None) -> str:
+    """Create a new note in the knowledge base.
+    
+    Args:
+        title: Title of the note (will be used as filename and H1 heading)
+        content: Content of the note (markdown supported)
+        kb_dir: Knowledge base directory
+        db_path: Database path
+        tags: Optional comma-separated tags
+        ctx: MCP context for logging
+    
+    Returns:
+        Confirmation message with filepath
+    """
+    filepath, error = create_note_file(kb_dir, title, content, tags)
+    
+    if error:
+        return f"Error: {error}"
+    
+    # Index the new note
+    try:
+        note_data = index_file(filepath)
+        upsert_note_to_db(note_data, db_path)
+        
+        if ctx:
+            await ctx.info(f"Created note: {filepath}")
+        
+        return f"Successfully created note '{title}' at:\n{filepath}"
+    except Exception as e:
+        return f"Error indexing new note: {e}"
+
+
+async def update_note(filepath: str, content: str, db_path: str, ctx: Context = None) -> str:
+    """Update an existing note's content (replaces entire content).
+    
+    Args:
+        filepath: Full path to the note file
+        content: New content for the note (will completely replace existing content)
+        db_path: Database path
+        ctx: MCP context for logging
+    
+    Returns:
+        Confirmation message
+    """
+    note_path = Path(filepath)
+    
+    error = update_note_file(note_path, content)
+    if error:
+        return f"Error: {error}"
+    
+    # Re-index the note
+    try:
+        note_data = index_file(note_path)
+        upsert_note_to_db(note_data, db_path)
+        
+        if ctx:
+            await ctx.info(f"Updated note: {filepath}")
+        
+        return f"Successfully updated note at:\n{filepath}"
+    except Exception as e:
+        return f"Error re-indexing updated note: {e}"
+
+
+async def append_to_note(filepath: str, content: str, db_path: str, ctx: Context = None) -> str:
+    """Append content to an existing note (adds to the end).
+    
+    Args:
+        filepath: Full path to the note file
+        content: Content to append to the note
+        db_path: Database path
+        ctx: MCP context for logging
+    
+    Returns:
+        Confirmation message
+    """
+    note_path = Path(filepath)
+    
+    error = append_to_note_file(note_path, content)
+    if error:
+        return f"Error: {error}"
+    
+    # Re-index the note
+    try:
+        note_data = index_file(note_path)
+        upsert_note_to_db(note_data, db_path)
+        
+        if ctx:
+            await ctx.info(f"Appended to note: {filepath}")
+        
+        return f"Successfully appended to note at:\n{filepath}"
+    except Exception as e:
+        return f"Error re-indexing appended note: {e}"

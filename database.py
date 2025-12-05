@@ -216,3 +216,130 @@ def get_kb_statistics(db_path: str) -> dict:
         'last_indexed': last_indexed,
         'total_chars': total_chars
     }
+
+
+def upsert_note_to_db(note_data: Dict[str, Any], db_path: str):
+    """Insert or update a note in the database and FTS index."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO notes
+        (filepath, filename, title, content, tags, created_at, modified_at, indexed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        note_data['filepath'],
+        note_data['filename'],
+        note_data['title'],
+        note_data['content'],
+        note_data['tags'],
+        note_data['created_at'],
+        note_data['modified_at'],
+        note_data['indexed_at']
+    ))
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO notes_fts
+        (rowid, filepath, filename, title, content, tags)
+        SELECT id, filepath, filename, title, content, tags
+        FROM notes WHERE filepath = ?
+    """, (note_data['filepath'],))
+
+    conn.commit()
+    conn.close()
+
+
+def create_note_file(kb_dir: str, title: str, content: str, tags: str = "") -> tuple[Path, str]:
+    """Create a new markdown file with proper formatting.
+    
+    Returns:
+        tuple: (filepath, error_message) - error_message is empty string on success
+    """
+    # Sanitize filename
+    filename = re.sub(r'[^\w\s-]', '', title.lower())
+    filename = re.sub(r'[-\s]+', '-', filename)
+    filename = f"{filename}.md"
+
+    filepath = Path(kb_dir) / filename
+
+    # Check if file already exists
+    if filepath.exists():
+        return filepath, f"Note '{filename}' already exists. Use update_note to modify it."
+
+    # Create frontmatter if tags provided
+    frontmatter = ""
+    if tags:
+        frontmatter = f"---\ntitle: {title}\ntags: {tags}\n---\n\n"
+
+    # Build full content
+    full_content = f"{frontmatter}# {title}\n\n{content}"
+
+    # Write file
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(full_content)
+        return filepath, ""
+    except Exception as e:
+        return filepath, f"Error creating file: {e}"
+
+
+def update_note_file(filepath: Path, content: str) -> str:
+    """Update an existing note file, preserving frontmatter.
+    
+    Returns:
+        Empty string on success, error message on failure
+    """
+    if not filepath.exists():
+        return f"Note not found at {filepath}"
+
+    try:
+        # Read existing frontmatter if present
+        with open(filepath, 'r', encoding='utf-8') as f:
+            old_content = f.read()
+
+        frontmatter, _ = extract_frontmatter(old_content)
+
+        # Preserve frontmatter if it exists
+        if frontmatter:
+            fm_lines = ["---"]
+            for key, value in frontmatter.items():
+                fm_lines.append(f"{key}: {value}")
+            fm_lines.append("---\n")
+            full_content = "\n".join(fm_lines) + "\n" + content
+        else:
+            full_content = content
+
+        # Write updated content
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(full_content)
+
+        return ""
+    except Exception as e:
+        return f"Error updating note: {e}"
+
+
+def append_to_note_file(filepath: Path, content: str) -> str:
+    """Append content to an existing note file.
+    
+    Returns:
+        Empty string on success, error message on failure
+    """
+    if not filepath.exists():
+        return f"Note not found at {filepath}"
+
+    try:
+        # Read existing content
+        with open(filepath, 'r', encoding='utf-8') as f:
+            existing_content = f.read()
+
+        # Append new content
+        updated_content = existing_content.rstrip() + "\n\n" + content
+
+        # Write back
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+
+        return ""
+    except Exception as e:
+        return f"Error appending to note: {e}"
