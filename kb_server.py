@@ -7,16 +7,20 @@ Indexes markdown files from a directory and provides search capabilities.
 import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 from fastmcp import FastMCP, Context
 
 from database import init_db, index_directory
 import tools
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Initialize the MCP server
 mcp = FastMCP("Knowledge Base")
 
-# Configuration - customize these paths
+# Configuration - customize these paths in .env file
 KB_DIR = os.getenv("KB_DIR", str(Path.home() / "knowledge_base"))
 DB_PATH = os.getenv("KB_DB", str(Path.home() / ".kb_index.db"))
 
@@ -64,4 +68,8 @@ if Path(KB_DIR).exists():
     print(f"Indexed {count} notes from {KB_DIR}", file=sys.stderr)
 
 if __name__ == "__main__":
-    mcp.run()
+    try:
+        mcp.run()
+    except KeyboardInterrupt:
+        print("\nShutting down gracefully...", file=sys.stderr)
+        sys.exit(0)
