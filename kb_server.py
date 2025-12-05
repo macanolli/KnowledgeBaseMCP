@@ -60,7 +60,7 @@ def init_db():
 
 
 def extract_frontmatter(content: str) -> tuple:
-    """Extract YAML frontmatter from markdown content."""
+    """Extract YAML frontmatter from the Markdown content."""
     frontmatter = {}
 
     if content.startswith("---"):
@@ -80,7 +80,7 @@ def extract_frontmatter(content: str) -> tuple:
 
 
 def index_file(filepath: Path) -> Dict[str, Any]:
-    """Index a single markdown file."""
+    """Index a single Markdown file."""
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
