@@ -1,0 +1,16 @@
+services:
+  knowledgebase-mcp:
+    build: .
+    container_name: knowledgebase-mcp
+    volumes:
+      # Mount your local notes directory (read-write to allow creating/editing notes)
+      - /Users/smith/knowledge_base:/data/notes
+      # Mount database directory for persistence
+      - ./data/db:/data/db
+    environment:
+      - KB_DIR=/data/notes
+      - KB_DB=/data/db/kb_index.db
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
