@@ -26,7 +26,7 @@ cd KnowledgeBaseMCP
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate  
 
 # Install dependencies
 pip install -r requirements.txt
@@ -44,89 +44,8 @@ KB_DB=/path/to/database/kb_index.db
 ### Run
 
 ```bash
-python kb_server.py
+python server.py
 ```
-
-## Connect to Claude Desktop
-
-### Config File Locations
-
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux:** `~/.config/Claude/claude_desktop_config.json`
-
-### Configuration
-
-Add to your config file:
-
-```json
-{
-  "mcpServers": {
-    "knowledge-base": {
-      "command": "/path/to/.venv/bin/python",
-      "args": ["/path/to/kb_server.py"]
-    }
-  }
-}
-```
-
-**Windows example:**
-```json
-{
-  "mcpServers": {
-    "knowledge-base": {
-      "command": "C:\\Users\\YourName\\KnowledgeBaseMCP\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\YourName\\KnowledgeBaseMCP\\kb_server.py"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop after saving.
-
-## Connect to VS Code (Cline)
-
-### Install Cline Extension
-
-1. Open VS Code
-2. Go to Extensions (Ctrl+Shift+X / Cmd+Shift+X)
-3. Search for "Cline"
-4. Install the extension
-
-### Config File Location
-
-- **Windows:** `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`
-- **macOS:** `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
-- **Linux:** `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
-
-### Configuration
-
-Add to the config file:
-
-```json
-{
-  "mcpServers": {
-    "knowledge-base": {
-      "command": "/path/to/.venv/bin/python",
-      "args": ["/path/to/kb_server.py"]
-    }
-  }
-}
-```
-
-**Windows example:**
-```json
-{
-  "mcpServers": {
-    "knowledge-base": {
-      "command": "C:\\Users\\YourName\\KnowledgeBaseMCP\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\YourName\\KnowledgeBaseMCP\\kb_server.py"]
-    }
-  }
-}
-```
-
-Restart VS Code after saving.
 
 ## Available Tools
 
@@ -142,8 +61,6 @@ Restart VS Code after saving.
 | `get_kb_stats` | View statistics |
 
 ## Usage Examples
-
-Once connected to Claude or Cline:
 
 ```
 "Search my notes for Python async"
