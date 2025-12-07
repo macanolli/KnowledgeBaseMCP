@@ -20,9 +20,11 @@ load_dotenv()
 # Initialize the MCP server
 mcp = FastMCP("Knowledge Base")
 
-# Configuration - customize these paths in .env file
-KB_DIR = os.getenv("KB_DIR", str(Path.home() / "knowledge_base"))
-DB_PATH = os.getenv("KB_DB", str(Path.home() / ".kb_index.db"))
+KB_DIR = os.getenv("KB_DIR")
+DB_PATH = os.getenv("KB_DB")
+
+if not KB_DIR or not DB_PATH:
+    raise ValueError("KB_DIR and KB_DB must be set in .env file")
 
 
 @mcp.tool
