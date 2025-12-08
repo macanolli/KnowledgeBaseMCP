@@ -22,13 +22,10 @@ A Model Context Protocol (MCP) server for managing and searching personal markdo
    cd KnowledgeBaseMCP
    ```
 
-2. **Edit `docker-compose.yml`** to point to your notes directory:
-   ```yaml
-   volumes:
-     - /path/to/your/notes:/data/notes
-     - ./data/db:/data/db
+2. **Create a `.env` file** to set your notes directory:
+   ```bash
+   KB_DIR=/path/to/your/notes
    ```
-
 
 3. **Build and run**:
    ```bash
