@@ -4,7 +4,7 @@ services:
     container_name: knowledgebase-mcp
     volumes:
       # Mount your local notes directory (read-write to allow creating/editing notes)
-      - /Users/smith/knowledge_base:/data/notes
+      - ${KB_DIR}:/data/notes
       # Mount database directory for persistence
       - ./data/db:/data/db
     environment:
