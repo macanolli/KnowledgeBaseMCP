@@ -29,7 +29,6 @@ A Model Context Protocol (MCP) server for managing and searching personal markdo
      - ./data/db:/data/db
    ```
 
-   **Note:** Remove `:ro` to allow write access if you want to create/edit notes through the MCP server.
 
 3. **Build and run**:
    ```bash
