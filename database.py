@@ -343,3 +343,123 @@ def append_to_note_file(filepath: Path, content: str) -> str:
         return ""
     except Exception as e:
         return f"Error appending to note: {e}"
+
+
+def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
+    """
+    Commit and push changes to git repo.
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    import subprocess
+
+    repo_path = Path(kb_dir)
+
+    try:
+        # Check if it's a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return False, "Not a git repository"
+
+        # Get current branch name
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return False, "Failed to get current branch"
+
+        current_branch = result.stdout.strip()
+        if not current_branch:
+            return False, "Not on a branch (detached HEAD)"
+
+        # Configure git credential helper if GIT_TOKEN is available
+        git_token = os.environ.get("GIT_TOKEN")
+        if git_token:
+            # Get the remote URL
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            remote_url = result.stdout.strip()
+
+            # If using HTTPS, inject token into URL
+            if remote_url.startswith("https://github.com/"):
+                auth_url = remote_url.replace("https://", f"https://{git_token}@")
+                subprocess.run(
+                    ["git", "remote", "set-url", "origin", auth_url],
+                    cwd=repo_path,
+                    capture_output=True,
+                    timeout=5
+                )
+
+        # Stage all changes
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+            timeout=10
+        )
+
+        # Check if there are changes to commit
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=repo_path,
+            capture_output=True
+        )
+
+        if result.returncode == 0:
+            return True, "No changes to commit"
+
+        # Commit
+        subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+            timeout=10
+        )
+
+        # Pull with rebase (using current branch)
+        subprocess.run(
+            ["git", "pull", "--rebase", "origin", current_branch],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+            timeout=30
+        )
+
+        # Push (using current branch)
+        subprocess.run(
+            ["git", "push", "origin", current_branch],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+            timeout=30
+        )
+
+        return True, f"Successfully committed and pushed changes to {current_branch}"
+
+    except subprocess.TimeoutExpired:
+        return False, "Git operation timed out"
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        return False, f"Git error: {error_msg}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"

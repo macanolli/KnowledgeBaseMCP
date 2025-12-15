@@ -69,6 +69,7 @@ async def create_note(title: str, content: str, tags: str = "", ctx: Context = N
     Create a new note in the knowledge base.
     
     Args:
+        ctx:
         title: Title of the note (will be used as filename and H1 heading)
         content: Content of the note (markdown supported)
         tags: Optional comma-separated tags
@@ -85,6 +86,7 @@ async def update_note(filepath: str, content: str, ctx: Context = None) -> str:
     Update an existing note's content (replaces entire content).
     
     Args:
+        ctx:
         filepath: Full path to the note file
         content: New content for the note (will completely replace existing content)
     
@@ -100,6 +102,7 @@ async def append_to_note(filepath: str, content: str, ctx: Context = None) -> st
     Append content to an existing note (adds to the end).
     
     Args:
+        ctx:
         filepath: Full path to the note file
         content: Content to append to the note
     
