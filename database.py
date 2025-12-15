@@ -6,6 +6,7 @@ Handles SQLite database initialization, indexing, and queries.
 
 import sqlite3
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
@@ -107,20 +108,48 @@ def index_file(filepath: Path) -> Dict[str, Any]:
     }
 
 
-def index_directory(directory: str, db_path: str) -> int:
-    """Index all Markdown files in the directory."""
+def index_directory(directory: str, db_path: str) -> tuple[int, int]:
+    """Index all Markdown files in the directory and remove orphaned entries.
+
+    Returns:
+        tuple: (indexed_count, removed_count)
+    """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    idx = 0
     kb_path = Path(directory)
 
     if not kb_path.exists():
         kb_path.mkdir(parents=True, exist_ok=True)
-        return 0
+        return 0, 0
 
+    # Step 1: Get all files currently on filesystem
+    filesystem_files = set()
     for md_file in kb_path.rglob("*.md"):
+        filesystem_files.add(str(md_file))
+
+    # Step 2: Get all files currently in database
+    cursor.execute("SELECT filepath FROM notes")
+    db_files = {row[0] for row in cursor.fetchall()}
+
+    # Step 3: Find orphaned entries (in DB but not on filesystem)
+    orphaned_files = db_files - filesystem_files
+
+    # Step 4: Remove orphaned entries from both tables
+    removed_count = 0
+    for filepath in orphaned_files:
+        # Delete from FTS table first (foreign key constraint)
+        cursor.execute("DELETE FROM notes_fts WHERE rowid IN (SELECT id FROM notes WHERE filepath = ?)", (filepath,))
+        # Delete from notes table
+        cursor.execute("DELETE FROM notes WHERE filepath = ?", (filepath,))
+        removed_count += 1
+        print(f"Removed orphaned entry: {filepath}", file=sys.stderr)
+
+    # Step 5: Index/update all current files
+    indexed_count = 0
+    for md_file_path in filesystem_files:
         try:
+            md_file = Path(md_file_path)
             note_data = index_file(md_file)
 
             cursor.execute("""
@@ -145,14 +174,14 @@ def index_directory(directory: str, db_path: str) -> int:
                 FROM notes WHERE filepath = ?
             """, (note_data['filepath'],))
 
-            idx += 1
+            indexed_count += 1
         except Exception as e:
             print(f"Error indexing {md_file}: {e}", file=sys.stderr)
 
     conn.commit()
     conn.close()
 
-    return idx
+    return indexed_count, removed_count
 
 
 def search_notes_db(query: str, db_path: str, limit: int = 10) -> list:
@@ -455,6 +484,124 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
         )
 
         return True, f"Successfully committed and pushed changes to {current_branch}"
+
+    except subprocess.TimeoutExpired:
+        return False, "Git operation timed out"
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        return False, f"Git error: {error_msg}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
+
+def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
+    """
+    Pull changes from the remote git repository.
+    Used to sync notes from other machines before listing or reindexing.
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    import subprocess
+
+    repo_path = Path(kb_dir)
+
+    try:
+        # Check if it's a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return False, "Not a git repository"
+
+        # Get current branch name
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return False, "Failed to get current branch"
+
+        current_branch = result.stdout.strip()
+        if not current_branch:
+            return False, "Not on a branch (detached HEAD)"
+
+        # Configure git credential helper if GIT_TOKEN is available
+        git_token = os.environ.get("GIT_TOKEN")
+        if git_token:
+            # Get the remote URL
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            remote_url = result.stdout.strip()
+
+            # If using HTTPS, inject token into URL
+            if remote_url.startswith("https://github.com/"):
+                auth_url = remote_url.replace("https://", f"https://{git_token}@")
+                subprocess.run(
+                    ["git", "remote", "set-url", "origin", auth_url],
+                    cwd=repo_path,
+                    capture_output=True,
+                    timeout=5
+                )
+
+        # Fetch from remote
+        subprocess.run(
+            ["git", "fetch", "origin", current_branch],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+            timeout=30
+        )
+
+        # Check if we're behind remote
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        commits_behind = int(result.stdout.strip()) if result.returncode == 0 else 0
+
+        if commits_behind == 0:
+            return True, "Already up to date"
+
+        # Pull with rebase to avoid merge commits
+        result = subprocess.run(
+            ["git", "pull", "--rebase", "origin", current_branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            # If rebase fails, try to abort and report error
+            subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=repo_path,
+                capture_output=True,
+                timeout=5
+            )
+            error_msg = result.stderr if result.stderr else "Pull failed"
+            return False, f"Git pull failed: {error_msg}"
+
+        return True, f"Pulled {commits_behind} commit(s) from {current_branch}"
 
     except subprocess.TimeoutExpired:
         return False, "Git operation timed out"

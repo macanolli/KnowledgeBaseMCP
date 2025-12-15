@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from fastmcp import FastMCP, Context
 
-from database import init_db, index_directory
+from database import init_db, index_directory, git_pull_from_remote
 import tools
 
 # Load environment variables from .env file
@@ -115,8 +115,19 @@ async def append_to_note(filepath: str, content: str, ctx: Context = None) -> st
 # Initialize on startup
 init_db(DB_PATH)
 if Path(KB_DIR).exists():
-    count = index_directory(KB_DIR, DB_PATH)
-    print(f"Indexed {count} notes from {KB_DIR}", file=sys.stderr)
+    # Pull from remote to sync changes from other machines
+    success, git_message = git_pull_from_remote(KB_DIR)
+    if success:
+        print(f"Git sync: {git_message}", file=sys.stderr)
+    else:
+        print(f"Git sync warning: {git_message}", file=sys.stderr)
+
+    # Index all files
+    indexed_count, removed_count = index_directory(KB_DIR, DB_PATH)
+    if removed_count > 0:
+        print(f"Indexed {indexed_count} notes and removed {removed_count} orphaned entries from {KB_DIR}", file=sys.stderr)
+    else:
+        print(f"Indexed {indexed_count} notes from {KB_DIR}", file=sys.stderr)
 
 if __name__ == "__main__":
     try:

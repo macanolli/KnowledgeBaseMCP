@@ -17,7 +17,8 @@ from database import (
     append_to_note_file,
     index_file,
     upsert_note_to_db,
-    git_commit_and_push
+    git_commit_and_push,
+    git_pull_from_remote
 )
 
 
@@ -65,10 +66,30 @@ async def read_note(filepath: str) -> str:
 async def reindex_kb(ctx: Context, kb_dir: str, db_path: str) -> str:
     """Reindex all Markdown files in the knowledge base directory."""
     await ctx.info(f"Starting reindex of {kb_dir}...")
-    count = index_directory(kb_dir, db_path)
-    message = f"Successfully indexed {count} notes from {kb_dir}"
+
+    # Pull from remote first to sync changes from other machines
+    success, git_message = git_pull_from_remote(kb_dir)
+    if success:
+        await ctx.info(f"Git sync: {git_message}")
+    else:
+        await ctx.warning(f"Git sync: {git_message}")
+
+    indexed_count, removed_count = index_directory(kb_dir, db_path)
+
+    if removed_count > 0:
+        message = f"Successfully indexed {indexed_count} notes and removed {removed_count} orphaned entries from {kb_dir}"
+    else:
+        message = f"Successfully indexed {indexed_count} notes from {kb_dir}"
+
     await ctx.info(message)
-    return message
+
+    # Include git sync status in the response
+    if success and "Pulled" in git_message:
+        return f"{message}\n\n📥 Git: {git_message}"
+    elif success:
+        return message
+    else:
+        return f"{message}\n\n⚠️ Git: {git_message}"
 
 
 async def list_recent_notes(db_path: str, limit: int = 20) -> str:
