@@ -19,7 +19,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server.py .
 COPY database.py .
 COPY tools.py .
-COPY .env.example .
 
 # Create directories for notes and database
 RUN mkdir -p /data/notes /data/db
