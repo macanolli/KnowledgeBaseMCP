@@ -7,10 +7,13 @@ services:
       - ${KB_DIR}:/data/notes
       # Mount database directory for persistence
       - ./data/db:/data/db
+      - ./.gitconfig-docker:/root/.gitconfig:ro
     environment:
       - KB_DIR=/data/notes
       - KB_DB=/data/db/kb_index.db
       - LOG_LEVEL=INFO
+      # GitHub Personal Access Token for git operations (optional - add to .env if needed)
+      - GIT_TOKEN=${GIT_TOKEN:-}
     restart: unless-stopped
     stdin_open: true
     tty: true

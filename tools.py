@@ -16,7 +16,8 @@ from database import (
     update_note_file,
     append_to_note_file,
     index_file,
-    upsert_note_to_db
+    upsert_note_to_db,
+    git_commit_and_push
 )
 
 
@@ -124,11 +125,22 @@ async def create_note(title: str, content: str, kb_dir: str, db_path: str, tags:
     try:
         note_data = index_file(filepath)
         upsert_note_to_db(note_data, db_path)
-        
+
         if ctx:
             await ctx.info(f"Created note: {filepath}")
-        
-        return f"Successfully created note '{title}' at:\n{filepath}"
+
+        # Git commit and push
+        success, git_message = git_commit_and_push(kb_dir, f"Created note: {title}")
+        if success:
+            if ctx:
+                await ctx.info(f"Git: {git_message}")
+            git_status = f"\n\n📦 Git: {git_message}"
+        else:
+            if ctx:
+                await ctx.warning(f"Git: {git_message}")
+            git_status = f"\n\n⚠️ Git: {git_message}"
+
+        return f"Successfully created note '{title}' at:\n{filepath}{git_status}"
     except Exception as e:
         return f"Error indexing new note: {e}"
 
@@ -155,11 +167,36 @@ async def update_note(filepath: str, content: str, db_path: str, ctx: Context = 
     try:
         note_data = index_file(note_path)
         upsert_note_to_db(note_data, db_path)
-        
+
         if ctx:
             await ctx.info(f"Updated note: {filepath}")
-        
-        return f"Successfully updated note at:\n{filepath}"
+
+        # Find git root by walking up from note_path.parent
+        git_root = None
+        current = note_path.parent
+        while current != current.parent:
+            if (current / ".git").exists():
+                git_root = current
+                break
+            current = current.parent
+
+        # Git commit and push
+        if git_root:
+            success, git_message = git_commit_and_push(str(git_root), f"Updated note: {note_path.name}")
+            if success:
+                if ctx:
+                    await ctx.info(f"Git: {git_message}")
+                git_status = f"\n\n📦 Git: {git_message}"
+            else:
+                if ctx:
+                    await ctx.warning(f"Git: {git_message}")
+                git_status = f"\n\n⚠️ Git: {git_message}"
+        else:
+            git_status = "\n\n⚠️ Git: Not a git repository"
+            if ctx:
+                await ctx.warning("Git: Not a git repository")
+
+        return f"Successfully updated note at:\n{filepath}{git_status}"
     except Exception as e:
         return f"Error re-indexing updated note: {e}"
 
@@ -186,10 +223,35 @@ async def append_to_note(filepath: str, content: str, db_path: str, ctx: Context
     try:
         note_data = index_file(note_path)
         upsert_note_to_db(note_data, db_path)
-        
+
         if ctx:
             await ctx.info(f"Appended to note: {filepath}")
-        
-        return f"Successfully appended to note at:\n{filepath}"
+
+        # Find git root by walking up from note_path.parent
+        git_root = None
+        current = note_path.parent
+        while current != current.parent:
+            if (current / ".git").exists():
+                git_root = current
+                break
+            current = current.parent
+
+        # Git commit and push
+        if git_root:
+            success, git_message = git_commit_and_push(str(git_root), f"Appended to note: {note_path.name}")
+            if success:
+                if ctx:
+                    await ctx.info(f"Git: {git_message}")
+                git_status = f"\n\n📦 Git: {git_message}"
+            else:
+                if ctx:
+                    await ctx.warning(f"Git: {git_message}")
+                git_status = f"\n\n⚠️ Git: {git_message}"
+        else:
+            git_status = "\n\n⚠️ Git: Not a git repository"
+            if ctx:
+                await ctx.warning("Git: Not a git repository")
+
+        return f"Successfully appended to note at:\n{filepath}{git_status}"
     except Exception as e:
         return f"Error re-indexing appended note: {e}"
