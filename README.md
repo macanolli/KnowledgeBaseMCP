@@ -1,92 +1,116 @@
+
 # Knowledge Base MCP Server
 
-A Model Context Protocol (MCP) server for managing and searching personal markdown notes. 
+The **Knowledge Base MCP Server** is a Model Context Protocol (MCP) server designed for managing, indexing, and searching personal Markdown notes. It provides fast full-text search, structured metadata support, and optional Git-based synchronization, making it ideal for personal knowledge bases and MCP-enabled clients.
+
+---
 
 ## Features
 
-- 📝 **Create, update, and append** to markdown notes
-- 🔍 **Full-text search** with snippet highlighting (SQLite FTS5)
-- 🏷️ **YAML frontmatter** support for tags and metadata
-- 📊 **Statistics** and recently modified notes
-- 🔄 **Auto-indexing** on startup
-- 🔀 **Automatic Git sync** - Auto-commit and push changes to your repository
-- 🌐 **Multiple transport modes** - STDIO (local) or SSE (HTTP server)
+* 📝 **Create, update, and append** Markdown notes
+* 🔍 **Full-text search** with snippet highlighting (SQLite FTS5)
+* 🏷️ **YAML frontmatter** support for tags and metadata
+* 📊 **Knowledge base statistics** and recently modified notes
+* 🔄 **Automatic indexing** on startup and after updates
+* 🔀 **Git synchronization (optional)** — auto-commit and push changes
+* 🌐 **Multiple transport modes** — STDIO (local) or SSE (HTTP server)
 
+---
 
+## Deployment Options
+
+You can run the server using Docker (recommended) or directly in a Python virtual environment.
+
+---
 
 ## Docker Deployment (Recommended)
 
-#### Using Docker Compose
+### Using Docker Compose
 
-1. **Clone the repository** (if you haven't already):
+1. **Clone the repository**
+
    ```bash
    git clone https://github.com/macanolli/KnowledgeBaseMCP.git
    cd KnowledgeBaseMCP
    ```
 
-2. **Create a `.env` file** to set your notes directory:
+2. **Create a `.env` file** to configure your environment:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env`:
+
    ```bash
    KB_DIR=/path/to/your/notes
    KB_DB=/data/db/kb_index.db
 
-   # Optional: Enable automatic git sync
+   # Optional: Enable automatic Git sync
    GIT_TOKEN=your_github_personal_access_token
 
-   # Optional: Use SSE transport instead of STDIO
+   # Optional: Transport mode
    MCP_TRANSPORT=stdio  # or 'sse' for HTTP server
    PORT=3399
    HOST=0.0.0.0
    ```
 
-3. **Configure Git authoring details** (required for git sync):
-   ```bash
-   # Copy the example file
-   cp .gitconfig-docker.example .gitconfig-docker
+3. **Configure Git authoring details** (required if Git sync is enabled):
 
-   # Edit .gitconfig-docker and add your details:
-   # [user]
-   #   name = Your Name
-   #   email = your.email@example.com
+   ```bash
+   cp .gitconfig-docker.example .gitconfig-docker
    ```
 
-   This file is mounted into the Docker container and used for git commits when you create, update, or append notes.
+   Edit `.gitconfig-docker`:
 
-4. **Build and run**:
+   ```ini
+   [user]
+     name = Your Name
+     email = your.email@example.com
+   ```
+
+   This file is mounted into the container and used when committing note changes.
+
+4. **Build and start the container**
+
    ```bash
    docker-compose up -d
    ```
 
+---
 
-#### Docker Volume Notes
+### Docker Volume Notes
 
-- **Notes directory** (`/data/notes`): Mounted with read-write access by default to enable creating/editing notes. Add `:ro` for read-only mode if you prefer to protect your original files.
-- **Database directory** (`/data/db`): Persists the search index between container restarts
-- Replace `/path/to/your/notes` with the absolute path to your markdown notes folder
+* **Notes directory (`/data/notes`)**
+  Mounted with read-write access by default. Use `:ro` if you want read-only access.
 
+* **Database directory (`/data/db`)**
+  Persists the search index across container restarts.
+
+* Replace `/path/to/your/notes` with the absolute path to your Markdown notes folder.
+
+---
 
 ## Python Virtual Environment
 
-#### Prerequisites
+### Prerequisites
 
-- Python 3.10+
-- [FastMCP](https://github.com/jlowin/fastmcp)
+* Python 3.10+
+* [FastMCP](https://github.com/jlowin/fastmcp)
 
-#### Installation
+### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/macanolli/KnowledgeBaseMCP.git
 cd KnowledgeBaseMCP
 
-# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-#### Configuration
+### Configuration
 
 Create a `.env` file (or copy from `.env.example`):
 
@@ -94,33 +118,37 @@ Create a `.env` file (or copy from `.env.example`):
 KB_DIR=/path/to/your/notes
 KB_DB=/path/to/database/kb_index.db
 
-# Optional: Enable automatic git sync
+# Optional: Enable automatic Git sync
 GIT_TOKEN=your_github_personal_access_token
 
 # Optional: Transport mode
-MCP_TRANSPORT=stdio  # or 'sse' for HTTP server
+MCP_TRANSPORT=stdio  # or 'sse'
 PORT=3399
 HOST=0.0.0.0
 ```
 
-#### Run
+### Run the Server
 
 ```bash
 python server.py
 ```
 
-## Available Tools
+---
 
-| Tool | Description |
-|------|-------------|
-| `search_notes` | Full-text search through notes |
-| `read_note` | Read complete note contents |
-| `list_recent_notes` | Show recently modified notes |
-| `create_note` | Create new note with tags |
-| `update_note` | Replace note content |
-| `append_to_note` | Add to existing note |
-| `reindex_kb` | Refresh search index |
-| `get_kb_stats` | View statistics |
+## Available MCP Tools
+
+| Tool                | Description                      |
+| ------------------- | -------------------------------- |
+| `search_notes`      | Full-text search across notes    |
+| `read_note`         | Read the full contents of a note |
+| `list_recent_notes` | List recently modified notes     |
+| `create_note`       | Create a new note with metadata  |
+| `update_note`       | Replace existing note content    |
+| `append_to_note`    | Append content to a note         |
+| `reindex_kb`        | Rebuild the search index         |
+| `get_kb_stats`      | View knowledge base statistics   |
+
+---
 
 ## Usage Examples
 
@@ -131,34 +159,41 @@ python server.py
 "Add these instructions to my knowledge base"
 ```
 
+---
+
 ## Project Structure
 
 ```
 KnowledgeBaseMCP/
-├── server.py          # Main MCP server entry point
-├── database.py        # SQLite operations
+├── server.py          # MCP server entry point
+├── database.py        # SQLite and indexing logic
 ├── tools.py           # MCP tool implementations
-├── .env               # Configuration (create this)
+├── .env               # Environment configuration
 └── requirements.txt   # Python dependencies
 ```
 
+---
+
 ## How It Works
 
-1. **Indexes** markdown files from `KB_DIR` into SQLite
-2. **Parses** YAML frontmatter for metadata
-3. **FTS5 search** enables fast full-text queries
-4. **Auto-reindexing** when creating/updating notes via MCP tools
-5. **Git automation** (optional) commits and pushes changes after note operations
+1. **Indexes** Markdown files from `KB_DIR` into a SQLite database
+2. **Parses** YAML frontmatter for structured metadata
+3. **Uses FTS5** for fast and accurate full-text search
+4. **Auto-reindexes** when notes are created or modified via MCP tools
+5. **Optionally syncs with Git**, committing and pushing changes automatically
+
+---
 
 ## Advanced Configuration
 
 ### Automatic Git Sync
 
-If your notes directory is a git repository, the server can automatically commit and push changes when notes are created, updated, or appended.
+If your notes directory is a Git repository, the server can automatically commit and push changes when notes are created, updated, or appended.
 
-**Setup:**
+#### Setup
 
-1. Initialize your notes directory as a git repository:
+1. Initialize Git in your notes directory:
+
    ```bash
    cd /path/to/your/notes
    git init
@@ -166,49 +201,68 @@ If your notes directory is a git repository, the server can automatically commit
    ```
 
 2. Create a GitHub Personal Access Token:
-   - Go to: https://github.com/settings/tokens
-   - Click "Generate new token (classic)"
-   - Select scope: **repo** (Full control of private repositories)
-   - Copy the token
+
+   * Visit: [https://github.com/settings/tokens](https://github.com/settings/tokens)
+   * Generate a **classic** token
+   * Enable the **repo** scope
+   * Copy the token
 
 3. Add the token to your `.env` file:
+
    ```bash
    GIT_TOKEN=ghp_your_token_here
    ```
 
 4. Restart the server
 
-**What happens:**
-- When you create a note → automatic commit: `"Created note: title"`
-- When you update a note → automatic commit: `"Updated note: filename"`
-- When you append to a note → automatic commit: `"Appended to note: filename"`
-- Each operation automatically pulls with rebase and pushes to your remote
+#### What Happens Automatically
+
+* **Create note** → `Created note: title`
+* **Update note** → `Updated note: filename`
+* **Append note** → `Appended to note: filename`
+
+Each operation pulls with rebase before pushing to the remote repository.
+
+---
 
 ### Transport Modes
 
-**STDIO Mode (Default):**
-- Local communication via standard input/output
-- Used with Claude Desktop and local MCP clients
-- Configure in `.env`: `MCP_TRANSPORT=stdio`
+#### STDIO Mode (Default)
 
-**SSE Mode (HTTP Server):**
-- Server-Sent Events over HTTP
-- Enables remote access to your knowledge base
-- Configure in `.env`:
+* Local communication over standard input/output
+* Designed for Claude Desktop and local MCP clients
+* Configure with:
+
+  ```bash
+  MCP_TRANSPORT=stdio
+  ```
+
+#### SSE Mode (HTTP Server)
+
+* Server-Sent Events over HTTP
+* Enables remote access to your knowledge base
+* Configure with:
+
   ```bash
   MCP_TRANSPORT=sse
   PORT=3399
-  HOST=0.0.0.0  # or specific IP
+  HOST=0.0.0.0
   ```
-- Access at: `http://your-server:3399`
+* Access the server at: `http://your-server:3399`
+
+---
 
 ## License
 
 MIT
 
+---
+
 ## Contributing
 
-Pull requests welcome! Please ensure your code follows the existing structure:
-- Database operations in `database.py`
-- Tool implementations in `tools.py`  
-- MCP decorators in `server.py`
+Pull requests are welcome! Please follow the existing structure:
+
+* **`database.py`** — database and indexing logic
+* **`tools.py`** — MCP tool implementations
+* **`server.py`** — MCP decorators and server setup
+
