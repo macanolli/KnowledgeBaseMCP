@@ -38,7 +38,20 @@ A Model Context Protocol (MCP) server for managing and searching personal markdo
    HOST=0.0.0.0
    ```
 
-3. **Build and run**:
+3. **Configure Git authoring details** (required for git sync):
+   ```bash
+   # Copy the example file
+   cp .gitconfig-docker.example .gitconfig-docker
+
+   # Edit .gitconfig-docker and add your details:
+   # [user]
+   #   name = Your Name
+   #   email = your.email@example.com
+   ```
+
+   This file is mounted into the Docker container and used for git commits when you create, update, or append notes.
+
+4. **Build and run**:
    ```bash
    docker-compose up -d
    ```
