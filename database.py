@@ -406,8 +406,13 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
         if not repo.index.diff("HEAD") and not repo.untracked_files:
             return True, "No changes to commit"
 
-        # Commit
-        repo.index.commit(message)
+        # Commit locally
+        commit_succeeded = False
+        try:
+            repo.index.commit(message)
+            commit_succeeded = True
+        except GitCommandError as e:
+            return False, f"Failed to create local commit: {str(e)}"
 
         # Prepare secure environment for git operations if GIT_TOKEN is available
         git_token = os.environ.get("GIT_TOKEN")
@@ -451,6 +456,13 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
                 origin.push(current_branch, env=custom_env)
             else:
                 origin.push(current_branch)
+        except GitCommandError as e:
+            # Commit succeeded but sync failed - likely network issue
+            error_str = str(e).lower()
+            if any(indicator in error_str for indicator in ['network', 'connection', 'timed out', 'could not resolve', 'failed to connect']):
+                return False, f"Saved locally but couldn't sync to GitHub (no internet connection). Changes will sync automatically when internet is restored."
+            else:
+                return False, f"Saved locally but couldn't sync to GitHub: {str(e)}. Changes will sync on next successful operation."
         finally:
             # Clean up temporary askpass script
             if custom_env and 'GIT_ASKPASS' in custom_env:
@@ -461,8 +473,6 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
 
         return True, f"Successfully committed and pushed changes to {current_branch}"
 
-    except GitCommandError as e:
-        return False, f"Git error: {str(e)}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
@@ -525,10 +535,18 @@ def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
         try:
             # Fetch from remote
             origin = repo.remotes.origin
-            if custom_env:
-                origin.fetch(current_branch, env=custom_env)
-            else:
-                origin.fetch(current_branch)
+            try:
+                if custom_env:
+                    origin.fetch(current_branch, env=custom_env)
+                else:
+                    origin.fetch(current_branch)
+            except GitCommandError as e:
+                # Fetch failed - likely network issue
+                error_str = str(e).lower()
+                if any(indicator in error_str for indicator in ['network', 'connection', 'timed out', 'could not resolve', 'failed to connect']):
+                    return False, f"Couldn't sync with GitHub (no internet connection). Your local files are safe and will sync when internet is restored."
+                else:
+                    return False, f"Couldn't sync with GitHub: {str(e)}. Your local files are safe."
 
             # Check if we're behind remote
             try:
@@ -552,7 +570,11 @@ def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
                     repo.git.rebase(abort=True)
                 except Exception:
                     pass
-                return False, f"Git pull failed: {str(e)}"
+                error_str = str(e).lower()
+                if any(indicator in error_str for indicator in ['network', 'connection', 'timed out', 'could not resolve', 'failed to connect']):
+                    return False, f"Couldn't complete sync with GitHub (no internet connection). Your local files are safe."
+                else:
+                    return False, f"Git pull failed: {str(e)}"
 
             return True, f"Pulled {commits_behind} commit(s) from {current_branch}"
 
@@ -565,6 +587,9 @@ def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
                     pass
 
     except GitCommandError as e:
+        error_str = str(e).lower()
+        if any(indicator in error_str for indicator in ['network', 'connection', 'timed out', 'could not resolve', 'failed to connect']):
+            return False, f"Couldn't sync with GitHub (no internet connection). Your local files are safe."
         return False, f"Git error: {str(e)}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
