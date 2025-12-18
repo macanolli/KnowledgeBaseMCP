@@ -342,3 +342,6 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/jetbrains+all,jetbrains+iml,visualstudiocode,python
 .gitconfig-docker
+
+# Claude Code local settings
+.claude/

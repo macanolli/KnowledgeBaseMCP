@@ -280,20 +280,48 @@ def upsert_note_to_db(note_data: Dict[str, Any], db_path: str):
 
 def create_note_file(kb_dir: str, title: str, content: str, tags: str = "") -> tuple[Path, str]:
     """Create a new markdown file with proper formatting.
-    
+
     Returns:
         tuple: (filepath, error_message) - error_message is empty string on success
     """
-    # Sanitize filename
-    filename = re.sub(r'[^\w\s-]', '', title.lower())
-    filename = re.sub(r'[-\s]+', '-', filename)
-    filename = f"{filename}.md"
+    # Parse path components from title (support subdirectories)
+    path_parts = title.split('/')
 
-    filepath = Path(kb_dir) / filename
+    # Sanitize each component separately to prevent path traversal
+    sanitized_parts = []
+    for part in path_parts:
+        # Remove special characters but allow alphanumeric, spaces, hyphens, underscores
+        sanitized = re.sub(r'[^\w\s-]', '', part.lower())
+        sanitized = re.sub(r'[-\s]+', '-', sanitized).strip('-')
+
+        # Reject empty parts and path traversal attempts
+        if not sanitized or sanitized in ('.', '..'):
+            return Path(), f"Invalid path component in title: '{part}'"
+
+        sanitized_parts.append(sanitized)
+
+    # Build filename from last component and directory path from the rest
+    filename = f"{sanitized_parts[-1]}.md"
+    if len(sanitized_parts) > 1:
+        relative_dir = Path(*sanitized_parts[:-1])
+    else:
+        relative_dir = Path()
+
+    # Construct full filepath
+    filepath = Path(kb_dir) / relative_dir / filename
+
+    # SECURITY: Verify the resolved path is still within kb_dir
+    try:
+        kb_dir_resolved = Path(kb_dir).resolve()
+        filepath_resolved = filepath.resolve()
+        if not str(filepath_resolved).startswith(str(kb_dir_resolved)):
+            return Path(), "Invalid path: attempt to write outside knowledge base directory"
+    except Exception as e:
+        return Path(), f"Path validation error: {e}"
 
     # Check if file already exists
     if filepath.exists():
-        return filepath, f"Note '{filename}' already exists. Use update_note to modify it."
+        return filepath, f"Note '{'/'.join(sanitized_parts)}' already exists. Use update_note to modify it."
 
     # Create frontmatter if tags provided
     frontmatter = ""
@@ -350,7 +378,7 @@ def update_note_file(filepath: Path, content: str) -> str:
 
 def append_to_note_file(filepath: Path, content: str) -> str:
     """Append content to an existing note file.
-    
+
     Returns:
         Empty string on success, error message on failure
     """
@@ -372,6 +400,44 @@ def append_to_note_file(filepath: Path, content: str) -> str:
         return ""
     except Exception as e:
         return f"Error appending to note: {e}"
+
+
+def create_directory(kb_dir: str, directory_path: str) -> tuple[bool, str]:
+    """Create a directory within the knowledge base.
+
+    Args:
+        kb_dir: Root knowledge base directory
+        directory_path: Relative path for the directory to create (e.g., "projects/python")
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        kb_path = Path(kb_dir)
+
+        # Resolve the target directory path
+        target_path = kb_path / directory_path
+
+        # Security check: ensure target is within kb_dir
+        try:
+            target_path.resolve().relative_to(kb_path.resolve())
+        except ValueError:
+            return False, "Error: Directory path must be within the knowledge base directory"
+
+        # Check if directory already exists
+        if target_path.exists():
+            if target_path.is_dir():
+                return False, f"Directory already exists: {directory_path}"
+            else:
+                return False, f"A file already exists at: {directory_path}"
+
+        # Create the directory
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        return True, f"Successfully created directory: {directory_path}"
+
+    except Exception as e:
+        return False, f"Error creating directory: {e}"
 
 
 def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
