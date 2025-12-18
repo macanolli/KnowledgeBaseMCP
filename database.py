@@ -280,20 +280,48 @@ def upsert_note_to_db(note_data: Dict[str, Any], db_path: str):
 
 def create_note_file(kb_dir: str, title: str, content: str, tags: str = "") -> tuple[Path, str]:
     """Create a new markdown file with proper formatting.
-    
+
     Returns:
         tuple: (filepath, error_message) - error_message is empty string on success
     """
-    # Sanitize filename
-    filename = re.sub(r'[^\w\s-]', '', title.lower())
-    filename = re.sub(r'[-\s]+', '-', filename)
-    filename = f"{filename}.md"
+    # Parse path components from title (support subdirectories)
+    path_parts = title.split('/')
 
-    filepath = Path(kb_dir) / filename
+    # Sanitize each component separately to prevent path traversal
+    sanitized_parts = []
+    for part in path_parts:
+        # Remove special characters but allow alphanumeric, spaces, hyphens, underscores
+        sanitized = re.sub(r'[^\w\s-]', '', part.lower())
+        sanitized = re.sub(r'[-\s]+', '-', sanitized).strip('-')
+
+        # Reject empty parts and path traversal attempts
+        if not sanitized or sanitized in ('.', '..'):
+            return Path(), f"Invalid path component in title: '{part}'"
+
+        sanitized_parts.append(sanitized)
+
+    # Build filename from last component and directory path from the rest
+    filename = f"{sanitized_parts[-1]}.md"
+    if len(sanitized_parts) > 1:
+        relative_dir = Path(*sanitized_parts[:-1])
+    else:
+        relative_dir = Path()
+
+    # Construct full filepath
+    filepath = Path(kb_dir) / relative_dir / filename
+
+    # SECURITY: Verify the resolved path is still within kb_dir
+    try:
+        kb_dir_resolved = Path(kb_dir).resolve()
+        filepath_resolved = filepath.resolve()
+        if not str(filepath_resolved).startswith(str(kb_dir_resolved)):
+            return Path(), "Invalid path: attempt to write outside knowledge base directory"
+    except Exception as e:
+        return Path(), f"Path validation error: {e}"
 
     # Check if file already exists
     if filepath.exists():
-        return filepath, f"Note '{filename}' already exists. Use update_note to modify it."
+        return filepath, f"Note '{'/'.join(sanitized_parts)}' already exists. Use update_note to modify it."
 
     # Create frontmatter if tags provided
     frontmatter = ""
