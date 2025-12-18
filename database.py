@@ -350,7 +350,7 @@ def update_note_file(filepath: Path, content: str) -> str:
 
 def append_to_note_file(filepath: Path, content: str) -> str:
     """Append content to an existing note file.
-    
+
     Returns:
         Empty string on success, error message on failure
     """
@@ -372,6 +372,44 @@ def append_to_note_file(filepath: Path, content: str) -> str:
         return ""
     except Exception as e:
         return f"Error appending to note: {e}"
+
+
+def create_directory(kb_dir: str, directory_path: str) -> tuple[bool, str]:
+    """Create a directory within the knowledge base.
+
+    Args:
+        kb_dir: Root knowledge base directory
+        directory_path: Relative path for the directory to create (e.g., "projects/python")
+
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        kb_path = Path(kb_dir)
+
+        # Resolve the target directory path
+        target_path = kb_path / directory_path
+
+        # Security check: ensure target is within kb_dir
+        try:
+            target_path.resolve().relative_to(kb_path.resolve())
+        except ValueError:
+            return False, "Error: Directory path must be within the knowledge base directory"
+
+        # Check if directory already exists
+        if target_path.exists():
+            if target_path.is_dir():
+                return False, f"Directory already exists: {directory_path}"
+            else:
+                return False, f"A file already exists at: {directory_path}"
+
+        # Create the directory
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        return True, f"Successfully created directory: {directory_path}"
+
+    except Exception as e:
+        return False, f"Error creating directory: {e}"
 
 
 def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:

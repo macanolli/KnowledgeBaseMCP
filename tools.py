@@ -18,7 +18,8 @@ from database import (
     index_file,
     upsert_note_to_db,
     git_commit_and_push,
-    git_pull_from_remote
+    git_pull_from_remote,
+    create_directory
 )
 
 
@@ -276,3 +277,25 @@ async def append_to_note(filepath: str, content: str, db_path: str, ctx: Context
         return f"Successfully appended to note at:\n{filepath}{git_status}"
     except Exception as e:
         return f"Error re-indexing appended note: {e}"
+
+
+async def create_kb_directory(directory_path: str, kb_dir: str, ctx: Context = None) -> str:
+    """Create a directory within the knowledge base.
+
+    Args:
+        directory_path: Relative path for the directory to create (e.g., "projects/python")
+        kb_dir: Knowledge base root directory
+        ctx: MCP context for logging
+
+    Returns:
+        Confirmation message
+    """
+    success, message = create_directory(kb_dir, directory_path)
+
+    if ctx:
+        if success:
+            await ctx.info(message)
+        else:
+            await ctx.warning(message)
+
+    return message

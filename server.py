@@ -100,16 +100,31 @@ async def update_note(filepath: str, content: str, ctx: Context = None) -> str:
 async def append_to_note(filepath: str, content: str, ctx: Context = None) -> str:
     """
     Append content to an existing note (adds to the end).
-    
+
     Args:
         ctx:
         filepath: Full path to the note file
         content: Content to append to the note
-    
+
     Returns:
         Confirmation message
     """
     return await tools.append_to_note(filepath, content, DB_PATH, ctx)
+
+
+@mcp.tool
+async def create_directory(directory_path: str, ctx: Context = None) -> str:
+    """
+    Create a directory within the knowledge base.
+
+    Args:
+        ctx:
+        directory_path: Relative path for the directory to create (e.g., "projects/python")
+
+    Returns:
+        Confirmation message
+    """
+    return await tools.create_kb_directory(directory_path, KB_DIR, ctx)
 
 
 # Initialize on startup
