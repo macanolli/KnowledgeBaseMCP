@@ -376,237 +376,130 @@ def append_to_note_file(filepath: Path, content: str) -> str:
 
 def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
     """
-    Commit and push changes to git repo.
+    Commit and push changes to git repo using GitPython.
 
     Returns:
         tuple: (success: bool, message: str)
     """
-    import subprocess
+    from git import Repo, InvalidGitRepositoryError, GitCommandError
 
     repo_path = Path(kb_dir)
 
     try:
-        # Check if it's a git repo
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
+        # Check if it's a git repo and open it
+        try:
+            repo = Repo(repo_path)
+        except InvalidGitRepositoryError:
             return False, "Not a git repository"
 
-        # Get current branch name
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
-            return False, "Failed to get current branch"
-
-        current_branch = result.stdout.strip()
-        if not current_branch:
+        # Check if we're in a detached HEAD state
+        if repo.head.is_detached:
             return False, "Not on a branch (detached HEAD)"
+
+        # Get current branch name
+        current_branch = repo.active_branch.name
 
         # Configure git credential helper if GIT_TOKEN is available
         git_token = os.environ.get("GIT_TOKEN")
-        if git_token:
+        if git_token and 'origin' in repo.remotes:
             # Get the remote URL
-            result = subprocess.run(
-                ["git", "remote", "get-url", "origin"],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            remote_url = result.stdout.strip()
+            remote_url = repo.remotes.origin.url
 
             # If using HTTPS, inject token into URL
             if remote_url.startswith("https://github.com/"):
                 auth_url = remote_url.replace("https://", f"https://{git_token}@")
-                subprocess.run(
-                    ["git", "remote", "set-url", "origin", auth_url],
-                    cwd=repo_path,
-                    capture_output=True,
-                    timeout=5
-                )
+                repo.remotes.origin.set_url(auth_url)
 
         # Stage all changes
-        subprocess.run(
-            ["git", "add", "."],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            timeout=10
-        )
+        repo.git.add(A=True)
 
         # Check if there are changes to commit
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=repo_path,
-            capture_output=True
-        )
-
-        if result.returncode == 0:
+        if not repo.index.diff("HEAD") and not repo.untracked_files:
             return True, "No changes to commit"
 
         # Commit
-        subprocess.run(
-            ["git", "commit", "-m", message],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            timeout=10
-        )
+        repo.index.commit(message)
 
         # Pull with rebase (using current branch)
-        subprocess.run(
-            ["git", "pull", "--rebase", "origin", current_branch],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            timeout=30
-        )
+        origin = repo.remotes.origin
+        origin.pull(current_branch, rebase=True)
 
         # Push (using current branch)
-        subprocess.run(
-            ["git", "push", "origin", current_branch],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            timeout=30
-        )
+        origin.push(current_branch)
 
         return True, f"Successfully committed and pushed changes to {current_branch}"
 
-    except subprocess.TimeoutExpired:
-        return False, "Git operation timed out"
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
-        return False, f"Git error: {error_msg}"
+    except GitCommandError as e:
+        return False, f"Git error: {str(e)}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
 
 
 def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
     """
-    Pull changes from the remote git repository.
+    Pull changes from the remote git repository using GitPython.
     Used to sync notes from other machines before listing or reindexing.
 
     Returns:
         tuple: (success: bool, message: str)
     """
-    import subprocess
+    from git import Repo, InvalidGitRepositoryError, GitCommandError
 
     repo_path = Path(kb_dir)
 
     try:
-        # Check if it's a git repo
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
+        # Check if it's a git repo and open it
+        try:
+            repo = Repo(repo_path)
+        except InvalidGitRepositoryError:
             return False, "Not a git repository"
 
-        # Get current branch name
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
-            return False, "Failed to get current branch"
-
-        current_branch = result.stdout.strip()
-        if not current_branch:
+        # Check if we're in a detached HEAD state
+        if repo.head.is_detached:
             return False, "Not on a branch (detached HEAD)"
+
+        # Get current branch name
+        current_branch = repo.active_branch.name
 
         # Configure git credential helper if GIT_TOKEN is available
         git_token = os.environ.get("GIT_TOKEN")
-        if git_token:
+        if git_token and 'origin' in repo.remotes:
             # Get the remote URL
-            result = subprocess.run(
-                ["git", "remote", "get-url", "origin"],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            remote_url = result.stdout.strip()
+            remote_url = repo.remotes.origin.url
 
             # If using HTTPS, inject token into URL
             if remote_url.startswith("https://github.com/"):
                 auth_url = remote_url.replace("https://", f"https://{git_token}@")
-                subprocess.run(
-                    ["git", "remote", "set-url", "origin", auth_url],
-                    cwd=repo_path,
-                    capture_output=True,
-                    timeout=5
-                )
+                repo.remotes.origin.set_url(auth_url)
 
         # Fetch from remote
-        subprocess.run(
-            ["git", "fetch", "origin", current_branch],
-            cwd=repo_path,
-            check=True,
-            capture_output=True,
-            timeout=30
-        )
+        origin = repo.remotes.origin
+        origin.fetch(current_branch)
 
         # Check if we're behind remote
-        result = subprocess.run(
-            ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        commits_behind = int(result.stdout.strip()) if result.returncode == 0 else 0
+        try:
+            # Count commits between HEAD and origin/current_branch
+            commits_behind = sum(1 for _ in repo.iter_commits(f'HEAD..origin/{current_branch}'))
+        except Exception:
+            commits_behind = 0
 
         if commits_behind == 0:
             return True, "Already up to date"
 
         # Pull with rebase to avoid merge commits
-        result = subprocess.run(
-            ["git", "pull", "--rebase", "origin", current_branch],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-
-        if result.returncode != 0:
-            # If rebase fails, try to abort and report error
-            subprocess.run(
-                ["git", "rebase", "--abort"],
-                cwd=repo_path,
-                capture_output=True,
-                timeout=5
-            )
-            error_msg = result.stderr if result.stderr else "Pull failed"
-            return False, f"Git pull failed: {error_msg}"
+        try:
+            origin.pull(current_branch, rebase=True)
+        except GitCommandError as e:
+            # If rebase fails, try to abort
+            try:
+                repo.git.rebase(abort=True)
+            except Exception:
+                pass
+            return False, f"Git pull failed: {str(e)}"
 
         return True, f"Pulled {commits_behind} commit(s) from {current_branch}"
 
-    except subprocess.TimeoutExpired:
-        return False, "Git operation timed out"
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
-        return False, f"Git error: {error_msg}"
+    except GitCommandError as e:
+        return False, f"Git error: {str(e)}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
