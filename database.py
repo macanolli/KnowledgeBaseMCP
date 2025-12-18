@@ -376,7 +376,7 @@ def append_to_note_file(filepath: Path, content: str) -> str:
 
 def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
     """
-    Commit and push changes to git repo using GitPython.
+    Commit and push changes to git repo using GitPython with secure credential handling.
 
     Returns:
         tuple: (success: bool, message: str)
@@ -399,17 +399,6 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
         # Get current branch name
         current_branch = repo.active_branch.name
 
-        # Configure git credential helper if GIT_TOKEN is available
-        git_token = os.environ.get("GIT_TOKEN")
-        if git_token and 'origin' in repo.remotes:
-            # Get the remote URL
-            remote_url = repo.remotes.origin.url
-
-            # If using HTTPS, inject token into URL
-            if remote_url.startswith("https://github.com/"):
-                auth_url = remote_url.replace("https://", f"https://{git_token}@")
-                repo.remotes.origin.set_url(auth_url)
-
         # Stage all changes
         repo.git.add(A=True)
 
@@ -420,12 +409,55 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
         # Commit
         repo.index.commit(message)
 
-        # Pull with rebase (using current branch)
-        origin = repo.remotes.origin
-        origin.pull(current_branch, rebase=True)
+        # Prepare secure environment for git operations if GIT_TOKEN is available
+        git_token = os.environ.get("GIT_TOKEN")
+        custom_env = None
 
-        # Push (using current branch)
-        origin.push(current_branch)
+        if git_token and 'origin' in repo.remotes:
+            remote_url = repo.remotes.origin.url
+
+            # Only use token for HTTPS GitHub URLs
+            if remote_url.startswith("https://github.com/"):
+                # Create custom environment with GIT_ASKPASS
+                # This passes credentials without modifying .git/config
+                import tempfile
+                import stat
+
+                # Create a temporary script that returns the token
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.sh') as f:
+                    f.write('#!/bin/sh\n')
+                    f.write(f'echo "{git_token}"\n')
+                    askpass_script = f.name
+
+                # Make script executable
+                os.chmod(askpass_script, stat.S_IRUSR | stat.S_IXUSR)
+
+                # Set up custom environment
+                custom_env = os.environ.copy()
+                custom_env['GIT_ASKPASS'] = askpass_script
+                custom_env['GIT_USERNAME'] = git_token  # For GitHub, username can be the token
+                custom_env['GIT_PASSWORD'] = git_token
+
+        try:
+            # Pull with rebase (using current branch)
+            origin = repo.remotes.origin
+            if custom_env:
+                origin.pull(current_branch, rebase=True, env=custom_env)
+            else:
+                origin.pull(current_branch, rebase=True)
+
+            # Push (using current branch)
+            if custom_env:
+                origin.push(current_branch, env=custom_env)
+            else:
+                origin.push(current_branch)
+        finally:
+            # Clean up temporary askpass script
+            if custom_env and 'GIT_ASKPASS' in custom_env:
+                try:
+                    os.unlink(custom_env['GIT_ASKPASS'])
+                except Exception:
+                    pass
 
         return True, f"Successfully committed and pushed changes to {current_branch}"
 
@@ -437,7 +469,7 @@ def git_commit_and_push(kb_dir: str, message: str) -> tuple[bool, str]:
 
 def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
     """
-    Pull changes from the remote git repository using GitPython.
+    Pull changes from the remote git repository using GitPython with secure credential handling.
     Used to sync notes from other machines before listing or reindexing.
 
     Returns:
@@ -461,43 +493,76 @@ def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
         # Get current branch name
         current_branch = repo.active_branch.name
 
-        # Configure git credential helper if GIT_TOKEN is available
+        # Prepare secure environment for git operations if GIT_TOKEN is available
         git_token = os.environ.get("GIT_TOKEN")
+        custom_env = None
+
         if git_token and 'origin' in repo.remotes:
-            # Get the remote URL
             remote_url = repo.remotes.origin.url
 
-            # If using HTTPS, inject token into URL
+            # Only use token for HTTPS GitHub URLs
             if remote_url.startswith("https://github.com/"):
-                auth_url = remote_url.replace("https://", f"https://{git_token}@")
-                repo.remotes.origin.set_url(auth_url)
+                # Create custom environment with GIT_ASKPASS
+                # This passes credentials without modifying .git/config
+                import tempfile
+                import stat
 
-        # Fetch from remote
-        origin = repo.remotes.origin
-        origin.fetch(current_branch)
+                # Create a temporary script that returns the token
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.sh') as f:
+                    f.write('#!/bin/sh\n')
+                    f.write(f'echo "{git_token}"\n')
+                    askpass_script = f.name
 
-        # Check if we're behind remote
+                # Make script executable
+                os.chmod(askpass_script, stat.S_IRUSR | stat.S_IXUSR)
+
+                # Set up custom environment
+                custom_env = os.environ.copy()
+                custom_env['GIT_ASKPASS'] = askpass_script
+                custom_env['GIT_USERNAME'] = git_token  # For GitHub, username can be the token
+                custom_env['GIT_PASSWORD'] = git_token
+
         try:
-            # Count commits between HEAD and origin/current_branch
-            commits_behind = sum(1 for _ in repo.iter_commits(f'HEAD..origin/{current_branch}'))
-        except Exception:
-            commits_behind = 0
+            # Fetch from remote
+            origin = repo.remotes.origin
+            if custom_env:
+                origin.fetch(current_branch, env=custom_env)
+            else:
+                origin.fetch(current_branch)
 
-        if commits_behind == 0:
-            return True, "Already up to date"
-
-        # Pull with rebase to avoid merge commits
-        try:
-            origin.pull(current_branch, rebase=True)
-        except GitCommandError as e:
-            # If rebase fails, try to abort
+            # Check if we're behind remote
             try:
-                repo.git.rebase(abort=True)
+                # Count commits between HEAD and origin/current_branch
+                commits_behind = sum(1 for _ in repo.iter_commits(f'HEAD..origin/{current_branch}'))
             except Exception:
-                pass
-            return False, f"Git pull failed: {str(e)}"
+                commits_behind = 0
 
-        return True, f"Pulled {commits_behind} commit(s) from {current_branch}"
+            if commits_behind == 0:
+                return True, "Already up to date"
+
+            # Pull with rebase to avoid merge commits
+            try:
+                if custom_env:
+                    origin.pull(current_branch, rebase=True, env=custom_env)
+                else:
+                    origin.pull(current_branch, rebase=True)
+            except GitCommandError as e:
+                # If rebase fails, try to abort
+                try:
+                    repo.git.rebase(abort=True)
+                except Exception:
+                    pass
+                return False, f"Git pull failed: {str(e)}"
+
+            return True, f"Pulled {commits_behind} commit(s) from {current_branch}"
+
+        finally:
+            # Clean up temporary askpass script
+            if custom_env and 'GIT_ASKPASS' in custom_env:
+                try:
+                    os.unlink(custom_env['GIT_ASKPASS'])
+                except Exception:
+                    pass
 
     except GitCommandError as e:
         return False, f"Git error: {str(e)}"
