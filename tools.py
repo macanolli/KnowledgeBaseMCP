@@ -19,7 +19,10 @@ from database import (
     upsert_note_to_db,
     git_commit_and_push,
     git_pull_from_remote,
-    create_directory
+    create_directory,
+    get_tool_suggestion,
+    get_note_summary,
+    populate_tool_prompts
 )
 
 
@@ -299,3 +302,103 @@ async def create_kb_directory(directory_path: str, kb_dir: str, ctx: Context = N
             await ctx.warning(message)
 
     return message
+
+
+async def what_should_i_do_tool(user_request: str, db_path: str) -> str:
+    """
+    SMALL MODEL HELPER: Not sure which tool to use? Describe what you want to do.
+
+    This tool helps small language models choose the right tool for the task.
+    Just describe your intent in natural language.
+
+    Examples of tricky questions this can handle:
+    - "I want to jot down some quick thoughts" → create_note
+    - "What have I been working on lately?" → list_recent_notes
+    - "Where did I write about that database project?" → search_notes
+    - "I need to add more info to my meeting notes" → append_to_note
+    - "Can you tell me how many notes I have?" → get_kb_stats
+    - "I edited files outside the system, need to refresh" → reindex_kb
+    - "Need to organize my notes into categories" → create_directory
+    - "Want to completely rewrite my old note" → update_note
+    - "Let me see that Python tutorial I saved" → read_note
+
+    Returns exact tool name and parameters to use.
+    """
+    suggestion = get_tool_suggestion(user_request, db_path)
+
+    output = f"""Tool Recommendation (confidence: {suggestion['confidence']}):
+
+**Use tool:** {suggestion['tool_name']}
+
+**How to use it:**
+{suggestion['instruction']}
+
+**Your request:** "{user_request}"
+"""
+
+    return output
+
+
+async def quick_search_tool(keywords: str, db_path: str) -> str:
+    """
+    SMALL MODEL: Lightweight search returning only titles and paths (no content).
+    Use this to save tokens when you just need to find which notes exist.
+
+    Args:
+        keywords: Search keywords (space-separated)
+
+    Returns:
+        Compact list of top 5 matching notes with titles and filepaths only.
+    """
+    results = search_notes_db(keywords, db_path, limit=5)
+
+    if not results:
+        return f"No notes found matching: {keywords}"
+
+    output = [f"Found {len(results)} notes:\n"]
+
+    for i, (title, filepath, filename, tags, _) in enumerate(results, 1):
+        output.append(f"{i}. {title}")
+        output.append(f"   Path: {filepath}")
+        if tags:
+            output.append(f"   Tags: {tags}")
+
+    return "\n".join(output)
+
+
+async def get_summary_tool(filepath: str, db_path: str) -> str:
+    """
+    SMALL MODEL: Get brief summary of a note (saves tokens vs reading full content).
+    Use this first to check if a note is relevant before calling read_note.
+
+    Args:
+        filepath: Full path to the note file
+
+    Returns:
+        Brief summary (max 100 tokens) with key topics
+    """
+    summary_data = get_note_summary(filepath, db_path)
+
+    if summary_data['summary'] == 'Note not found':
+        return f"Error: Note not found at {filepath}"
+
+    output = f"""Summary of: {Path(filepath).name}
+
+{summary_data['summary']}"""
+
+    if summary_data['key_topics']:
+        output += f"\n\nKey topics: {summary_data['key_topics']}"
+
+    output += f"\n\nFull path: {filepath}"
+    output += "\n\n(Use read_note to see full content)"
+
+    return output
+
+
+async def initialize_tool_prompts(db_path: str) -> str:
+    """Initialize the tool_prompts table with guidance for small LLMs."""
+    try:
+        populate_tool_prompts(db_path)
+        return "Tool prompts initialized successfully"
+    except Exception as e:
+        return f"Error initializing tool prompts: {e}"
