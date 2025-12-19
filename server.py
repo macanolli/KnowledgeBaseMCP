@@ -127,8 +127,74 @@ async def create_directory(directory_path: str, ctx: Context = None) -> str:
     return await tools.create_kb_directory(directory_path, KB_DIR, ctx)
 
 
+@mcp.tool
+async def what_should_i_do(user_request: str) -> str:
+    """
+    SMALL MODEL HELPER: Not sure which tool to use? Describe what you want to do.
+
+    This tool helps choose the right tool for your task. Just describe your intent.
+
+    Examples:
+    - "I want to jot down some quick thoughts" → suggests create_note
+    - "What have I been working on lately?" → suggests list_recent_notes
+    - "Where did I write about databases?" → suggests search_notes
+    - "Add more info to my meeting notes" → suggests append_to_note
+    - "How many notes do I have?" → suggests get_kb_stats
+    - "I edited files externally" → suggests reindex_kb
+    - "Organize notes into folders" → suggests create_directory
+    - "Rewrite my old note completely" → suggests update_note
+    - "Show me that Python tutorial" → suggests read_note
+
+    Args:
+        user_request: Describe what you want to do in plain language
+
+    Returns:
+        Recommended tool name and instructions on how to use it
+    """
+    return await tools.what_should_i_do_tool(user_request, DB_PATH)
+
+
+@mcp.tool
+async def quick_search(keywords: str) -> str:
+    """
+    SMALL MODEL: Lightweight search - returns only titles and paths (no content snippets).
+    Use this to save tokens when you just need to find which notes exist.
+
+    Args:
+        keywords: Search keywords (space-separated)
+
+    Returns:
+        Compact list of top 5 matching notes
+    """
+    return await tools.quick_search_tool(keywords, DB_PATH)
+
+
+@mcp.tool
+async def get_note_summary(filepath: str) -> str:
+    """
+    SMALL MODEL: Get brief summary of a note (saves tokens vs reading full content).
+    Use this to check if a note is relevant before calling read_note.
+
+    Args:
+        filepath: Full path to the note file
+
+    Returns:
+        Brief summary with key topics
+    """
+    return await tools.get_summary_tool(filepath, DB_PATH)
+
+
 # Initialize on startup
 init_db(DB_PATH)
+
+# Initialize tool prompts for small LLM support
+try:
+    from database import populate_tool_prompts
+    populate_tool_prompts(DB_PATH)
+    print("Tool prompts initialized for small LLM support", file=sys.stderr)
+except Exception as e:
+    print(f"Warning: Could not initialize tool prompts: {e}", file=sys.stderr)
+
 if Path(KB_DIR).exists():
     # Pull from remote to sync changes from other machines
     success, git_message = git_pull_from_remote(KB_DIR)

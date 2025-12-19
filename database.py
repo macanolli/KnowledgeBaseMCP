@@ -46,6 +46,40 @@ def init_db(db_path: str):
         )
     """)
 
+    # Create table for tool prompts and instructions (for small LLMs)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tool_prompts (
+            tool_name TEXT PRIMARY KEY,
+            small_model_instruction TEXT NOT NULL,
+            example_inputs TEXT,
+            expected_output_format TEXT,
+            keywords TEXT
+        )
+    """)
+
+    # Create table for note summaries (token-efficient)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS note_summaries (
+            filepath TEXT PRIMARY KEY,
+            summary TEXT NOT NULL,
+            key_topics TEXT,
+            last_updated TEXT NOT NULL,
+            FOREIGN KEY(filepath) REFERENCES notes(filepath) ON DELETE CASCADE
+        )
+    """)
+
+    # Create table for query cache
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS query_cache (
+            query_hash TEXT PRIMARY KEY,
+            query_text TEXT NOT NULL,
+            result_summary TEXT NOT NULL,
+            tool_used TEXT,
+            timestamp TEXT NOT NULL,
+            hit_count INTEGER DEFAULT 1
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -659,3 +693,238 @@ def git_pull_from_remote(kb_dir: str) -> tuple[bool, str]:
         return False, f"Git error: {str(e)}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
+
+
+def populate_tool_prompts(db_path: str):
+    """Populate the tool_prompts table with initial data for small LLM guidance."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    tool_data = [
+        (
+            'search_notes',
+            'Search for notes using keywords. Use query="keyword1 keyword2" and limit=5 to save tokens.',
+            '["python async", "machine learning tutorial", "project ideas database"]',
+            'Returns list of matching notes with titles, filepaths, tags, and content snippets.',
+            'search,find,lookup,query,notes about,show me,locate,where'
+        ),
+        (
+            'read_note',
+            'Read the full content of a specific note. Use filepath="/full/path/to/note.md".',
+            '["/path/to/notes/python-tutorial.md", "/path/to/notes/project-ideas.md"]',
+            'Returns complete markdown content of the specified note.',
+            'read,open,show,view,get,display,full content,entire note'
+        ),
+        (
+            'list_recent_notes',
+            'List recently modified notes. Use limit=10 or less to save tokens.',
+            '[]',
+            'Returns list of recent notes with titles, filepaths, modified dates, and tags.',
+            'recent,latest,last modified,newest,what did i work on,show recent'
+        ),
+        (
+            'create_note',
+            'Create a new note. Required: title="Note Title" and content="Note content". Optional: tags="tag1,tag2".',
+            '["Quick Meeting Notes", "Python Async Patterns Tutorial"]',
+            'Returns confirmation with filepath and git status.',
+            'create,new,make,add,write,save,start,begin'
+        ),
+        (
+            'update_note',
+            'Replace entire content of existing note. Required: filepath="/path/to/note.md" and content="New content".',
+            '["/path/to/notes/existing-note.md"]',
+            'Returns confirmation with filepath and git status.',
+            'update,replace,modify,change,edit,overwrite,rewrite'
+        ),
+        (
+            'append_to_note',
+            'Add content to end of existing note. Required: filepath="/path/to/note.md" and content="Additional content".',
+            '["/path/to/notes/meeting-notes.md"]',
+            'Returns confirmation with filepath and git status.',
+            'append,add to,extend,continue,add more,attach'
+        ),
+        (
+            'get_kb_stats',
+            'Get statistics about the knowledge base. No parameters needed.',
+            '[]',
+            'Returns total notes count, total characters, directory path, last indexed time.',
+            'stats,statistics,info,information,how many,count,size,overview'
+        ),
+        (
+            'reindex_kb',
+            'Reindex all markdown files in knowledge base. Use after external file changes. No parameters needed.',
+            '[]',
+            'Returns count of indexed files and git sync status.',
+            'reindex,refresh,update index,rebuild,rescan,sync'
+        ),
+        (
+            'create_directory',
+            'Create a directory in knowledge base. Use directory_path="relative/path/to/dir".',
+            '["projects/python", "meeting-notes/2024", "research/ai"]',
+            'Returns confirmation message.',
+            'create folder,make directory,new folder,mkdir,organize'
+        ),
+    ]
+
+    for tool_name, instruction, examples, output_format, keywords in tool_data:
+        cursor.execute("""
+            INSERT OR REPLACE INTO tool_prompts
+            (tool_name, small_model_instruction, example_inputs, expected_output_format, keywords)
+            VALUES (?, ?, ?, ?, ?)
+        """, (tool_name, instruction, examples, output_format, keywords))
+
+    conn.commit()
+    conn.close()
+
+
+def get_tool_suggestion(user_intent: str, db_path: str) -> dict:
+    """Match user intent to appropriate tool using keyword matching.
+
+    Args:
+        user_intent: User's request in natural language
+        db_path: Database path
+
+    Returns:
+        dict with 'tool_name', 'instruction', 'confidence'
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Ensure tool_prompts table is populated
+    cursor.execute("SELECT COUNT(*) FROM tool_prompts")
+    if cursor.fetchone()[0] == 0:
+        conn.close()
+        populate_tool_prompts(db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+    # Get all tools with their keywords
+    cursor.execute("SELECT tool_name, small_model_instruction, keywords FROM tool_prompts")
+    tools = cursor.fetchall()
+    conn.close()
+
+    intent_lower = user_intent.lower()
+    matches = []
+
+    for tool_name, instruction, keywords in tools:
+        keyword_list = [k.strip() for k in keywords.split(',')]
+        match_count = sum(1 for keyword in keyword_list if keyword in intent_lower)
+        if match_count > 0:
+            matches.append({
+                'tool_name': tool_name,
+                'instruction': instruction,
+                'match_count': match_count
+            })
+
+    if not matches:
+        return {
+            'tool_name': 'search_notes',
+            'instruction': 'Try using search_notes with your keywords',
+            'confidence': 'low'
+        }
+
+    # Sort by match count
+    matches.sort(key=lambda x: x['match_count'], reverse=True)
+    best_match = matches[0]
+
+    confidence = 'high' if best_match['match_count'] >= 2 else 'medium'
+
+    return {
+        'tool_name': best_match['tool_name'],
+        'instruction': best_match['instruction'],
+        'confidence': confidence
+    }
+
+
+def generate_note_summary(filepath: str, content: str, db_path: str) -> str:
+    """Generate and cache a summary for a note.
+
+    Args:
+        filepath: Path to the note
+        content: Note content
+        db_path: Database path
+
+    Returns:
+        Summary text (max ~100 tokens)
+    """
+    # Simple extractive summary: first paragraph + key info
+    lines = content.strip().split('\n')
+
+    # Get first non-empty paragraph (up to 3 lines)
+    summary_lines = []
+    for line in lines[:10]:
+        if line.strip() and not line.strip().startswith('#'):
+            summary_lines.append(line.strip())
+            if len(summary_lines) >= 3:
+                break
+
+    summary = ' '.join(summary_lines)[:300]  # Limit to ~300 chars
+
+    # Extract key topics from headers
+    headers = [line.strip('# ').strip() for line in lines if line.startswith('#')]
+    key_topics = ', '.join(headers[:5]) if headers else ''
+
+    # Cache the summary
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO note_summaries
+        (filepath, summary, key_topics, last_updated)
+        VALUES (?, ?, ?, ?)
+    """, (filepath, summary, key_topics, datetime.now().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+    return summary
+
+
+def get_note_summary(filepath: str, db_path: str) -> dict:
+    """Get cached summary for a note, or generate if not cached.
+
+    Returns:
+        dict with 'summary', 'key_topics', 'filepath'
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Try to get cached summary
+    cursor.execute("""
+        SELECT summary, key_topics, last_updated
+        FROM note_summaries
+        WHERE filepath = ?
+    """, (filepath,))
+
+    result = cursor.fetchone()
+
+    if result:
+        conn.close()
+        return {
+            'filepath': filepath,
+            'summary': result[0],
+            'key_topics': result[1],
+            'last_updated': result[2]
+        }
+
+    # Generate new summary if not cached
+    cursor.execute("SELECT content FROM notes WHERE filepath = ?", (filepath,))
+    note_result = cursor.fetchone()
+    conn.close()
+
+    if not note_result:
+        return {
+            'filepath': filepath,
+            'summary': 'Note not found',
+            'key_topics': '',
+            'last_updated': ''
+        }
+
+    summary = generate_note_summary(filepath, note_result[0], db_path)
+
+    return {
+        'filepath': filepath,
+        'summary': summary,
+        'key_topics': '',
+        'last_updated': datetime.now().isoformat()
+    }

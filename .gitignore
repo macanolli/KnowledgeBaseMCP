@@ -345,3 +345,4 @@ pyrightconfig.json
 
 # Claude Code local settings
 .claude/
+data/kb_stats.db
