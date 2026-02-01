@@ -75,6 +75,20 @@ async def reindex_kb(ctx: Context) -> str:
 
 
 @mcp.tool
+async def sync_from_git(ctx: Context) -> str:
+    """
+    Pull latest changes from Git and reindex the knowledge base.
+
+    Use this after making changes on other devices (iOS app, local machine, etc.)
+    to sync those changes to the Railway-hosted MCP server.
+
+    Returns:
+        Status message with git pull result and reindex statistics
+    """
+    return await tools.sync_from_git(KB_DIR, DB_PATH, ctx)
+
+
+@mcp.tool
 async def list_recent_notes(limit: int = 20) -> str:
     """List the most recently modified notes."""
     return await tools.list_recent_notes(DB_PATH, limit)

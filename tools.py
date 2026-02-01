@@ -67,6 +67,40 @@ async def read_note(filepath: str) -> str:
         return f"Error reading note: {e}"
 
 
+async def sync_from_git(kb_dir: str, db_path: str, ctx: Context = None) -> str:
+    """
+    Pull latest changes from Git and reindex the knowledge base.
+
+    Use this after making changes on other devices (iOS app, local machine, etc.)
+    to sync those changes to the Railway-hosted MCP server.
+
+    Args:
+        kb_dir: Knowledge base directory
+        db_path: Database path
+        ctx: MCP context for logging
+
+    Returns:
+        Status message with git pull result and reindex statistics
+    """
+    # Pull from GitHub
+    success, message = git_pull_from_remote(kb_dir)
+    if not success:
+        if ctx:
+            await ctx.warning(f"Git sync failed: {message}")
+        return f"Git sync failed: {message}"
+
+    if ctx:
+        await ctx.info(f"Git: {message}")
+
+    # Reindex database with new files
+    indexed, removed = index_directory(kb_dir, db_path)
+
+    if ctx:
+        await ctx.info(f"Reindexed {indexed} notes, removed {removed} orphaned entries")
+
+    return f"Synced from Git: {message}\nReindexed {indexed} notes, removed {removed} orphaned entries."
+
+
 async def reindex_kb(ctx: Context, kb_dir: str, db_path: str) -> str:
     """Reindex all Markdown files in the knowledge base directory."""
     await ctx.info(f"Starting reindex of {kb_dir}...")
