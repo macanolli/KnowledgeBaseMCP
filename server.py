@@ -259,8 +259,20 @@ if Path(KB_DIR).exists():
         print(f"Indexed {indexed_count} notes from {KB_DIR}", file=sys.stderr)
 
 if __name__ == "__main__":
+    # Read transport configuration from environment
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+
+    # Debug: show transport configuration
+    print(f"Transport config: MCP_TRANSPORT={transport}, HOST={host}, PORT={port}", file=sys.stderr)
+
     try:
-        mcp.run()
+        if transport == "sse":
+            print(f"Starting SSE server on {host}:{port}", file=sys.stderr)
+            mcp.run(transport="sse", host=host, port=port)
+        else:
+            mcp.run(transport="stdio")
     except KeyboardInterrupt:
         print("\nShutting down gracefully...", file=sys.stderr)
         sys.exit(0)
