@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
+from typing import Optional
 
 from fastmcp import FastMCP, Context
 
@@ -22,9 +23,31 @@ mcp = FastMCP("Knowledge Base")
 
 KB_DIR = os.getenv("KB_DIR")
 DB_PATH = os.getenv("KB_DB")
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 
 if not KB_DIR or not DB_PATH:
     raise ValueError("KB_DIR and KB_DB must be set in .env file")
+
+# Optional authentication for SSE mode
+if AUTH_TOKEN:
+    print(f"Authentication enabled for SSE mode", file=sys.stderr)
+
+    @mcp.middleware
+    async def auth_middleware(ctx: Context):
+        """Validate authentication token for SSE requests (optional)."""
+        # Only apply auth to SSE mode (HTTP requests will have headers)
+        if hasattr(ctx, 'request_headers'):
+            auth_header = ctx.request_headers.get('authorization', '')
+
+            # Check for Bearer token
+            if not auth_header.startswith('Bearer '):
+                raise PermissionError("Missing or invalid Authorization header. Expected: Bearer <token>")
+
+            token = auth_header[7:]  # Remove 'Bearer ' prefix
+            if token != AUTH_TOKEN:
+                raise PermissionError("Invalid authentication token")
+
+        # STDIO mode has no headers - auth not applicable
 
 
 @mcp.tool
@@ -67,13 +90,13 @@ async def get_kb_stats() -> str:
 async def create_note(title: str, content: str, tags: str = "", ctx: Context = None) -> str:
     """
     Create a new note in the knowledge base.
-    
+
     Args:
         ctx:
         title: Title of the note (will be used as filename and H1 heading)
         content: Content of the note (markdown supported)
         tags: Optional comma-separated tags
-    
+
     Returns:
         Confirmation message with filepath
     """
@@ -84,12 +107,12 @@ async def create_note(title: str, content: str, tags: str = "", ctx: Context = N
 async def update_note(filepath: str, content: str, ctx: Context = None) -> str:
     """
     Update an existing note's content (replaces entire content).
-    
+
     Args:
         ctx:
         filepath: Full path to the note file
         content: New content for the note (will completely replace existing content)
-    
+
     Returns:
         Confirmation message
     """
