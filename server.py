@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from fastmcp import FastMCP, Context
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.server.dependencies import get_http_headers
+from fastmcp.exceptions import ToolError
 
 from database import init_db, index_directory, git_pull_from_remote
 import tools
@@ -28,26 +31,31 @@ AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 if not KB_DIR or not DB_PATH:
     raise ValueError("KB_DIR and KB_DB must be set in .env file")
 
-# Optional authentication for SSE mode
+
+# Optional Bearer token authentication for SSE mode
+class BearerAuthMiddleware(Middleware):
+    """Validate Bearer token for all tool calls in SSE mode."""
+
+    def __init__(self, token: str):
+        self.token = token
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        headers = get_http_headers() or {}
+        auth_header = headers.get("authorization", "")
+
+        # Check for valid Bearer token
+        if not auth_header.startswith("Bearer "):
+            raise ToolError("Missing or invalid Authorization header. Expected: Bearer <token>")
+
+        if auth_header[7:] != self.token:
+            raise ToolError("Invalid authentication token")
+
+        return await call_next(context)
+
+
 if AUTH_TOKEN:
-    print(f"Authentication enabled for SSE mode", file=sys.stderr)
-
-    @mcp.middleware
-    async def auth_middleware(ctx: Context):
-        """Validate authentication token for SSE requests (optional)."""
-        # Only apply auth to SSE mode (HTTP requests will have headers)
-        if hasattr(ctx, 'request_headers'):
-            auth_header = ctx.request_headers.get('authorization', '')
-
-            # Check for Bearer token
-            if not auth_header.startswith('Bearer '):
-                raise PermissionError("Missing or invalid Authorization header. Expected: Bearer <token>")
-
-            token = auth_header[7:]  # Remove 'Bearer ' prefix
-            if token != AUTH_TOKEN:
-                raise PermissionError("Invalid authentication token")
-
-        # STDIO mode has no headers - auth not applicable
+    mcp.add_middleware(BearerAuthMiddleware(AUTH_TOKEN))
+    print("Authentication enabled for SSE mode", file=sys.stderr)
 
 
 @mcp.tool
