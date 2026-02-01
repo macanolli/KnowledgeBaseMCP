@@ -240,6 +240,9 @@ try:
 except Exception as e:
     print(f"Warning: Could not initialize tool prompts: {e}", file=sys.stderr)
 
+# Ensure KB_DIR exists (needed for Railway/cloud deployments with empty volumes)
+Path(KB_DIR).mkdir(parents=True, exist_ok=True)
+
 if Path(KB_DIR).exists():
     # Pull from remote to sync changes from other machines
     success, git_message = git_pull_from_remote(KB_DIR)

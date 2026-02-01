@@ -15,6 +15,7 @@ import re
 
 def init_db(db_path: str):
     """Initialize the SQLite database for storing indexed notes."""
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
